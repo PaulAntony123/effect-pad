@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>React Pad</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet" />
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #0a0a0f;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: 'Share Tech Mono', monospace;
+    }
+
+    .wrap {
+      background: #0a0a0f;
+      width: 100%;
+      max-width: 520px;
+      min-height: 100vh;
+      padding: 24px 18px 36px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 14px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .wrap::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at 50% 0%, #1a0a3a 0%, #0a0a0f 65%);
+      z-index: 0;
+      pointer-events: none;
+    }
+
+    .title {
+      font-family: 'Orbitron', monospace;
+      font-size: 22px;
+      font-weight: 900;
+      color: #e0d0ff;
+      letter-spacing: 6px;
+      z-index: 1;
+      text-shadow: 0 0 24px #8b5cf6, 0 0 48px #8b5cf655;
+      text-transform: uppercase;
+    }
+
+    /* Keyboard hint */
+    .kb-hint {
+      z-index: 1;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: #ffffff08;
+      border: 1px solid #ffffff11;
+      border-radius: 10px;
+      padding: 6px 14px;
+      font-size: 9px;
+      color: #ffffff44;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+    }
+    .kb-hint span { font-size: 13px; color: #8b5cf6; }
+
+    /* Mode toggles bar */
+    .mode-bar {
+      z-index: 1;
+      display: flex;
+      gap: 8px;
+      width: 100%;
+    }
+    .mode-btn {
+      flex: 1;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      background: transparent;
+      border: 1px solid #ffffff18;
+      border-radius: 8px;
+      padding: 7px 4px;
+      cursor: pointer;
+      color: #ffffff33;
+      transition: all 0.18s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 5px;
+    }
+    .mode-btn:hover { border-color: #ffffff30; color: #ffffff66; }
+    .mode-btn.on {
+      border-color: currentColor;
+      background: color-mix(in srgb, currentColor 12%, transparent);
+    }
+    .mode-btn.loop-toggle.on  { color: #00ff77; }
+    .mode-btn.lock-toggle.on  { color: #ff9900; }
+    .mode-icon { font-size: 13px; }
+
+    /* Grid */
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 10px;
+      width: 100%;
+      z-index: 1;
+    }
+
+    .cell { display: flex; flex-direction: column; gap: 4px; }
+
+    .btn {
+      aspect-ratio: 1;
+      border-radius: 14px;
+      border: 1.5px solid;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      font-family: 'Share Tech Mono', monospace;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      position: relative;
+      overflow: hidden;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform 0.08s, box-shadow 0.2s, opacity 0.2s;
+      width: 100%;
+      background: #0d0d1a;
+    }
+
+    .btn:active:not(.locked) { transform: scale(0.89); }
+
+    /* Locked state */
+    .btn.locked {
+      opacity: 0.35;
+      cursor: not-allowed;
+      filter: grayscale(0.6);
+    }
+    .btn.locked::after {
+      content: '🔒';
+      position: absolute;
+      top: 5px;
+      right: 7px;
+      font-size: 12px;
+      opacity: 0.9;
+    }
+
+    /* Looping state */
+    .btn.looping {
+      animation: loopPulse 0.7s ease-in-out infinite alternate;
+    }
+    @keyframes loopPulse {
+      from { box-shadow: 0 0 6px currentColor inset, 0 0 0px currentColor; }
+      to   { box-shadow: 0 0 18px currentColor inset, 0 0 14px currentColor; }
+    }
+
+    .key-badge {
+      position: absolute;
+      top: 6px;
+      left: 8px;
+      font-family: 'Orbitron', monospace;
+      font-size: 11px;
+      font-weight: 700;
+      opacity: 0.4;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .btn-icon  { font-size: 26px; line-height: 1; pointer-events: none; }
+    .btn-name  {
+      font-size: 9px; letter-spacing: 2px; opacity: 0.9;
+      pointer-events: none; max-width: 88%;
+      overflow: hidden; text-overflow: ellipsis;
+      white-space: nowrap; text-align: center;
+    }
+
+    .btn.pop { animation: btnpop 0.28s ease-out forwards; }
+    @keyframes btnpop {
+      0%   { transform: scale(0.89); filter: brightness(1.8); }
+      55%  { transform: scale(1.07); filter: brightness(1.1); }
+      100% { transform: scale(1);    filter: brightness(1);   }
+    }
+
+    /* Upload row */
+    .upload-row { display: flex; gap: 4px; }
+    .up-btn {
+      flex: 1;
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      background: transparent;
+      border: 1px solid;
+      border-radius: 7px;
+      padding: 4px 5px;
+      cursor: pointer;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+      white-space: nowrap;
+    }
+    .up-btn:hover { opacity: 1; }
+    .rm-btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 9px;
+      background: transparent;
+      border: 1px solid #ff2255;
+      border-radius: 7px;
+      padding: 4px 7px;
+      cursor: pointer;
+      color: #ff2255;
+      opacity: 0.7;
+      transition: opacity 0.15s;
+      display: none;
+    }
+    .rm-btn:hover { opacity: 1; }
+
+    /* Numpad mini map */
+    .numpad-map { z-index: 1; display: grid; grid-template-columns: repeat(3, 32px); gap: 4px; }
+    .nk {
+      width: 32px; height: 32px; border-radius: 6px;
+      border: 1px solid #ffffff12;
+      display: flex; align-items: center; justify-content: center;
+      font-family: 'Orbitron', monospace; font-size: 11px; font-weight: 700;
+      color: #ffffff1a; background: #ffffff04;
+      transition: color 0.1s, border-color 0.1s, background 0.1s;
+    }
+    .nk.lit { color: #e0d0ff; border-color: #8b5cf6; background: #8b5cf615; text-shadow: 0 0 8px #8b5cf6; }
+
+    /* Status */
+    .status {
+      z-index: 1;
+      font-family: 'Orbitron', monospace;
+      font-size: 12px;
+      color: #8b5cf6;
+      letter-spacing: 3px;
+      height: 20px;
+      text-align: center;
+      width: 100%;
+      text-shadow: 0 0 10px #8b5cf677;
+    }
+
+    /* ── Recently Played History ── */
+    .history-wrap {
+      z-index: 1;
+      width: 100%;
+      background: #ffffff05;
+      border: 1px solid #ffffff0e;
+      border-radius: 12px;
+      padding: 10px 14px 12px;
+    }
+    .history-title {
+      font-family: 'Orbitron', monospace;
+      font-size: 9px;
+      letter-spacing: 3px;
+      color: #ffffff33;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .clear-btn {
+      font-family: 'Share Tech Mono', monospace;
+      font-size: 8px;
+      background: transparent;
+      border: 1px solid #ff225540;
+      border-radius: 5px;
+      padding: 2px 7px;
+      cursor: pointer;
+      color: #ff225577;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      transition: all 0.15s;
+    }
+    .clear-btn:hover { color: #ff2255; border-color: #ff2255; }
+
+    .history-list {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      max-height: 160px;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: #ffffff15 transparent;
+    }
+    .history-list::-webkit-scrollbar { width: 3px; }
+    .history-list::-webkit-scrollbar-thumb { background: #ffffff18; border-radius: 2px; }
+
+    .history-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 8px;
+      border-radius: 7px;
+      background: #ffffff04;
+      border: 1px solid #ffffff08;
+      animation: slideIn 0.2s ease-out;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .history-item:hover { background: #ffffff0a; border-color: #ffffff18; }
+    @keyframes slideIn {
+      from { opacity: 0; transform: translateX(-8px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    .hi-emoji { font-size: 16px; flex-shrink: 0; }
+    .hi-info  { flex: 1; display: flex; flex-direction: column; gap: 1px; }
+    .hi-name  { font-size: 10px; letter-spacing: 1px; text-transform: uppercase; }
+    .hi-time  { font-size: 8px; color: #ffffff33; letter-spacing: 1px; }
+    .hi-dot   { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; }
+    .hi-replay { font-size: 9px; color: #ffffff22; letter-spacing: 1px; opacity: 0; transition: opacity 0.15s; }
+    .history-item:hover .hi-replay { opacity: 1; }
+
+    .history-empty {
+      font-size: 9px;
+      color: #ffffff18;
+      letter-spacing: 2px;
+      text-align: center;
+      padding: 10px 0;
+    }
+
+    /* FX overlay */
+    .fx {
+      position: fixed;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%) scale(0.5);
+      font-size: 110px;
+      pointer-events: none;
+      z-index: 100;
+      opacity: 0;
+    }
+
+    #pcanvas {
+      position: fixed;
+      inset: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 50;
+    }
+
+    .hint {
+      z-index: 1;
+      font-size: 9px;
+      color: #ffffff15;
+      letter-spacing: 1.5px;
+      text-align: center;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="pcanvas"></canvas>
+<div class="fx" id="fx"></div>
+
+<div class="wrap" id="board">
+  <div class="title">REACT PAD</div>
+
+  <div class="kb-hint">
+    <span>⌨</span> Numpad 7–9 / 4–6 / 1–3 &nbsp;|&nbsp; or number row 1–9
+  </div>
+
+  <!-- Mode toggles -->
+  <div class="mode-bar">
+    <button class="mode-btn loop-toggle" id="loopToggle" title="Hold key/button to loop sound">
+      <span class="mode-icon">🔁</span> Loop Mode
+    </button>
+    <button class="mode-btn lock-toggle" id="lockToggle" title="Click pads to lock/unlock them">
+      <span class="mode-icon">🔒</span> Pad Lock
+    </button>
+  </div>
+
+  <div class="grid" id="grid"></div>
+
+  <div class="numpad-map" id="numpadMap"></div>
+
+  <div class="status" id="status">— READY —</div>
+
+  <!-- Recently Played -->
+  <div class="history-wrap">
+    <div class="history-title">
+      <span>⏱ Recently Played</span>
+      <button class="clear-btn" id="clearHistory">Clear</button>
+    </div>
+    <div class="history-list" id="historyList">
+      <div class="history-empty" id="historyEmpty">No pads triggered yet</div>
+    </div>
+  </div>
+
+  <div class="hint">Click + SOUND to upload custom audio &nbsp;|&nbsp; Click pad in lock mode to toggle lock</div>
+</div>
+
+<script>
+  /* ───────────────────────────────
+     Config
+  ─────────────────────────────── */
+  const KEY_MAP = {
+    'Numpad7':0,'Numpad8':1,'Numpad9':2,
+    'Numpad4':3,'Numpad5':4,'Numpad6':5,
+    'Numpad1':6,'Numpad2':7,'Numpad3':8,
+    'Digit7':0,'Digit8':1,'Digit9':2,
+    'Digit4':3,'Digit5':4,'Digit6':5,
+    'Digit1':6,'Digit2':7,'Digit3':8,
+  };
+  const KEY_LABELS = ['7','8','9','4','5','6','1','2','3'];
+
+  const reactions = [
+    { id:'fire',   icon:'🔥', label:'FIRE',   color:'#ff4500', base:200,  end:80,   wave:2, dur:350, msg:'🔥 BLAZING!'  },
+    { id:'zap',    icon:'⚡', label:'ZAP',    color:'#ffe600', base:1200, end:200,  wave:1, dur:200, msg:'⚡ SHOCKING!' },
+    { id:'ice',    icon:'❄️', label:'ICE',    color:'#00cfff', base:600,  end:1200, wave:0, dur:400, msg:'❄️ FROZEN!'   },
+    { id:'boom',   icon:'💥', label:'BOOM',   color:'#ff00aa', base:80,   end:40,   wave:2, dur:500, msg:'💥 BOOM!'     },
+    { id:'ghost',  icon:'👻', label:'GHOST',  color:'#aa77ff', base:300,  end:250,  wave:0, dur:600, msg:'👻 SPOOKED!'  },
+    { id:'venom',  icon:'☠️', label:'VENOM',  color:'#00ff77', base:400,  end:100,  wave:1, dur:300, msg:'☠️ TOXIC!'    },
+    { id:'nova',   icon:'💫', label:'NOVA',   color:'#ff9900', base:800,  end:1600, wave:0, dur:400, msg:'💫 NOVA!'     },
+    { id:'wave',   icon:'🌊', label:'WAVE',   color:'#00aaff', base:200,  end:400,  wave:0, dur:500, msg:'🌊 CRASHED!'  },
+    { id:'glitch', icon:'📡', label:'GLITCH', color:'#ff2255', base:1000, end:50,   wave:1, dur:250, msg:'📡 GLITCHED!' },
+  ];
+
+  /* ───────────────────────────────
+     State
+  ─────────────────────────────── */
+  const customAudio  = {};          // id → { url, name }
+  const lockedPads   = new Set();   // set of reaction ids
+  const loopingSynth = {};          // id → { osc, gain, stop }
+  const loopingAudio = {};          // id → Audio element
+  let   loopMode     = false;
+  let   lockMode     = false;
+  const history      = [];          // max 20 entries
+  const MAX_HISTORY  = 20;
+
+  /* ───────────────────────────────
+     DOM refs
+  ─────────────────────────────── */
+  const statusEl    = document.getElementById('status');
+  const fxEl        = document.getElementById('fx');
+  const canvas      = document.getElementById('pcanvas');
+  const ctx         = canvas.getContext('2d');
+  const grid        = document.getElementById('grid');
+  const numpadMap   = document.getElementById('numpadMap');
+  const loopToggle  = document.getElementById('loopToggle');
+  const lockToggle  = document.getElementById('lockToggle');
+  const historyList = document.getElementById('historyList');
+  const historyEmpty= document.getElementById('historyEmpty');
+  const clearHistBtn= document.getElementById('clearHistory');
+  const btnEls      = [];
+
+  /* ───────────────────────────────
+     Canvas
+  ─────────────────────────────── */
+  function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+  resizeCanvas();
+  window.addEventListener('resize', resizeCanvas);
+
+  /* ───────────────────────────────
+     Mode toggles
+  ─────────────────────────────── */
+  loopToggle.addEventListener('click', () => {
+    loopMode = !loopMode;
+    loopToggle.classList.toggle('on', loopMode);
+    // Stop all currently looping sounds if turning off
+    if (!loopMode) stopAllLoops();
+  });
+
+  lockToggle.addEventListener('click', () => {
+    lockMode = !lockMode;
+    lockToggle.classList.toggle('on', lockMode);
+  });
+
+  /* ───────────────────────────────
+     Numpad mini-map
+  ─────────────────────────────── */
+  KEY_LABELS.forEach(k => {
+    const nk = document.createElement('div');
+    nk.className = 'nk';
+    nk.id = 'nk-' + k;
+    nk.textContent = k;
+    numpadMap.appendChild(nk);
+  });
+
+  /* ───────────────────────────────
+     Build grid
+  ─────────────────────────────── */
+  reactions.forEach((r, i) => {
+    const cell = document.createElement('div');
+    cell.className = 'cell';
+
+    const btn = document.createElement('button');
+    btn.className = 'btn';
+    btn.id = 'btn-' + r.id;
+    btn.style.borderColor = r.color;
+    btn.style.color       = r.color;
+    btn.style.boxShadow   = `0 0 14px ${r.color}18 inset`;
+    btn.innerHTML = `
+      <span class="key-badge" style="color:${r.color}">${KEY_LABELS[i]}</span>
+      <span class="btn-icon">${r.icon}</span>
+      <span class="btn-name" id="name-${r.id}">${r.label}</span>
+    `;
+
+    btn.addEventListener('click', () => {
+      if (lockMode) {
+        // In lock mode, clicking toggles lock on the pad
+        toggleLock(r, btn);
+      } else {
+        trigger(r, i);
+      }
+    });
+
+    btn.addEventListener('mousedown', () => {
+      if (lockMode || lockedPads.has(r.id)) return;
+      if (loopMode) startLoop(r, btn);
+    });
+    btn.addEventListener('mouseup',   () => { if (loopMode) stopLoop(r, btn); });
+    btn.addEventListener('mouseleave',() => { if (loopMode) stopLoop(r, btn); });
+    btn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      if (lockMode) { toggleLock(r, btn); return; }
+      if (loopMode) startLoop(r, btn);
+      else trigger(r, i);
+    }, { passive: false });
+    btn.addEventListener('touchend', () => { if (loopMode) stopLoop(r, btn); });
+
+    btnEls.push(btn);
+
+    /* Upload row */
+    const row = document.createElement('div');
+    row.className = 'upload-row';
+
+    const upBtn = document.createElement('button');
+    upBtn.className = 'up-btn';
+    upBtn.style.borderColor = r.color;
+    upBtn.style.color       = r.color;
+    upBtn.textContent = '+ SOUND';
+
+    const rmBtn = document.createElement('button');
+    rmBtn.className = 'rm-btn';
+    rmBtn.id = 'rm-' + r.id;
+    rmBtn.textContent = '✕';
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file'; fileInput.accept = 'audio/*'; fileInput.style.display = 'none';
+
+    fileInput.addEventListener('change', e => {
+      const file = e.target.files[0]; if (!file) return;
+      if (customAudio[r.id]) URL.revokeObjectURL(customAudio[r.id].url);
+      const url  = URL.createObjectURL(file);
+      const name = file.name.replace(/\.[^.]+$/, '').toUpperCase().slice(0, 10);
+      customAudio[r.id] = { url, name };
+      document.getElementById('name-' + r.id).textContent = '♪ ' + name;
+      rmBtn.style.display = 'block';
+      upBtn.textContent   = '↺ SWAP';
+      fileInput.value     = '';
+    });
+
+    upBtn.addEventListener('click', () => fileInput.click());
+    rmBtn.addEventListener('click', e => {
+      e.stopPropagation();
+      if (customAudio[r.id]) URL.revokeObjectURL(customAudio[r.id].url);
+      delete customAudio[r.id];
+      document.getElementById('name-' + r.id).textContent = r.label;
+      rmBtn.style.display = 'none';
+      upBtn.textContent   = '+ SOUND';
+    });
+
+    row.appendChild(upBtn); row.appendChild(fileInput); row.appendChild(rmBtn);
+    cell.appendChild(btn); cell.appendChild(row);
+    grid.appendChild(cell);
+  });
+
+  /* ───────────────────────────────
+     Pad Lock
+  ─────────────────────────────── */
+  function toggleLock(r, btn) {
+    if (lockedPads.has(r.id)) {
+      lockedPads.delete(r.id);
+      btn.classList.remove('locked');
+      showStatus('🔓 ' + r.label + ' UNLOCKED', r.color);
+    } else {
+      lockedPads.add(r.id);
+      btn.classList.add('locked');
+      stopLoop(r, btn);
+      showStatus('🔒 ' + r.label + ' LOCKED', '#ff9900');
+    }
+  }
+
+  /* ───────────────────────────────
+     Audio
+  ─────────────────────────────── */
+  let actx = null;
+  function getACtx() {
+    if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+    return actx;
+  }
+
+  function playSynth(r) {
+    try {
+      const ac   = getACtx();
+      const osc  = ac.createOscillator();
+      const gain = ac.createGain();
+      const now  = ac.currentTime;
+      osc.connect(gain); gain.connect(ac.destination);
+      const types = ['sine','square','sawtooth'];
+      osc.type = types[r.wave] || 'sine';
+      osc.frequency.setValueAtTime(r.base, now);
+      osc.frequency.exponentialRampToValueAtTime(Math.max(r.end,1), now + r.dur/1000);
+      gain.gain.setValueAtTime(0.45, now);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + r.dur/1000);
+      osc.start(now); osc.stop(now + r.dur/1000 + 0.05);
+    } catch(e) {}
+  }
+
+  function playCustomOnce(r) {
+    const c = customAudio[r.id]; if (!c) return false;
+    try { const a = new Audio(c.url); a.volume = 0.9; a.play(); return true; }
+    catch(e) { return false; }
+  }
+
+  /* ── Loop Mode ── */
+  function startLoop(r, btn) {
+    if (lockedPads.has(r.id)) return;
+    if (loopingSynth[r.id] || loopingAudio[r.id]) return; // already looping
+
+    btn.classList.add('looping');
+
+    if (customAudio[r.id]) {
+      // Loop custom audio
+      const a = new Audio(customAudio[r.id].url);
+      a.loop = true; a.volume = 0.85;
+      a.play();
+      loopingAudio[r.id] = a;
+    } else {
+      // Loop synth via continuous oscillator
+      try {
+        const ac   = getACtx();
+        const osc  = ac.createOscillator();
+        const gain = ac.createGain();
+        osc.connect(gain); gain.connect(ac.destination);
+        const types = ['sine','square','sawtooth'];
+        osc.type = types[r.wave] || 'sine';
+        osc.frequency.value = r.base;
+        gain.gain.value = 0.35;
+        osc.start();
+        loopingSynth[r.id] = { osc, gain };
+      } catch(e) {}
+    }
+
+    showStatus('🔁 ' + (customAudio[r.id]?.name || r.label) + ' LOOPING', r.color);
+  }
+
+  function stopLoop(r, btn) {
+    if (loopingSynth[r.id]) {
+      try { loopingSynth[r.id].osc.stop(); } catch(e) {}
+      delete loopingSynth[r.id];
+    }
+    if (loopingAudio[r.id]) {
+      loopingAudio[r.id].pause();
+      loopingAudio[r.id].currentTime = 0;
+      delete loopingAudio[r.id];
+    }
+    btn.classList.remove('looping');
+  }
+
+  function stopAllLoops() {
+    reactions.forEach((r, i) => stopLoop(r, btnEls[i]));
+  }
+
+  /* ───────────────────────────────
+     Particles
+  ─────────────────────────────── */
+  let particles = [];
+  function spawnParticles(color, x, y) {
+    for (let i = 0; i < 35; i++) {
+      const angle = Math.random() * Math.PI * 2;
+      const speed = 2 + Math.random() * 7;
+      particles.push({ x, y, vx: Math.cos(angle)*speed, vy: Math.sin(angle)*speed - 2.5,
+        life:1, decay: 0.022 + Math.random()*0.028, r: 3 + Math.random()*6, color });
+    }
+  }
+  let animRunning = false;
+  function startAnim() { if (!animRunning) { animRunning = true; animLoop(); } }
+  function animLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    particles = particles.filter(p => p.life > 0);
+    particles.forEach(p => {
+      ctx.globalAlpha = p.life; ctx.fillStyle = p.color;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r*p.life, 0, Math.PI*2); ctx.fill();
+      p.x += p.vx; p.y += p.vy; p.vy += 0.18; p.life -= p.decay;
+    });
+    ctx.globalAlpha = 1;
+    if (particles.length > 0) requestAnimationFrame(animLoop);
+    else { animRunning = false; ctx.clearRect(0, 0, canvas.width, canvas.height); }
+  }
+
+  /* ───────────────────────────────
+     History
+  ─────────────────────────────── */
+  function addHistory(r) {
+    const name  = customAudio[r.id]?.name || r.label;
+    const entry = { icon: r.icon, name, color: r.color, time: new Date(), reactionIdx: reactions.indexOf(r) };
+    history.unshift(entry);
+    if (history.length > MAX_HISTORY) history.pop();
+    renderHistory();
+  }
+
+  function renderHistory() {
+    historyEmpty.style.display = history.length === 0 ? 'block' : 'none';
+    // Remove all items except the empty placeholder
+    [...historyList.querySelectorAll('.history-item')].forEach(el => el.remove());
+
+    history.forEach((entry, hi) => {
+      const item = document.createElement('div');
+      item.className = 'history-item';
+
+      const timeStr = formatTime(entry.time);
+      item.innerHTML = `
+        <span class="hi-emoji">${entry.icon}</span>
+        <div class="hi-info">
+          <span class="hi-name" style="color:${entry.color}">${entry.name}</span>
+          <span class="hi-time">${timeStr}</span>
+        </div>
+        <span class="hi-dot" style="background:${entry.color}"></span>
+        <span class="hi-replay">▶ REPLAY</span>
+      `;
+
+      item.addEventListener('click', () => {
+        const idx = entry.reactionIdx;
+        if (idx >= 0) trigger(reactions[idx], idx, true);
+      });
+
+      historyList.appendChild(item);
+    });
+  }
+
+  function formatTime(date) {
+    const now   = new Date();
+    const diff  = Math.floor((now - date) / 1000);
+    if (diff < 5)  return 'just now';
+    if (diff < 60) return diff + 's ago';
+    if (diff < 3600) return Math.floor(diff/60) + 'm ago';
+    return date.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' });
+  }
+
+  // Refresh timestamps every 15s
+  setInterval(renderHistory, 15000);
+
+  clearHistBtn.addEventListener('click', () => {
+    history.length = 0;
+    renderHistory();
+  });
+
+  /* ───────────────────────────────
+     Status helper
+  ─────────────────────────────── */
+  let statTimer = null;
+  function showStatus(msg, color) {
+    statusEl.textContent      = msg;
+    statusEl.style.color      = color;
+    statusEl.style.textShadow = `0 0 12px ${color}99`;
+    if (statTimer) clearTimeout(statTimer);
+    statTimer = setTimeout(() => {
+      statusEl.textContent      = '— READY —';
+      statusEl.style.color      = '#8b5cf6';
+      statusEl.style.textShadow = '0 0 10px #8b5cf677';
+    }, 2000);
+  }
+
+  /* ───────────────────────────────
+     Main trigger
+  ─────────────────────────────── */
+  function trigger(r, idx, fromHistory = false) {
+    if (lockedPads.has(r.id)) {
+      showStatus('🔒 ' + r.label + ' IS LOCKED', '#ff9900');
+      return;
+    }
+    if (loopMode && !fromHistory) return; // loop mode uses mousedown/up instead
+
+    const played = playCustomOnce(r);
+    if (!played) playSynth(r);
+
+    // Button pop
+    const btn = btnEls[idx];
+    btn.classList.remove('pop');
+    void btn.offsetWidth;
+    btn.classList.add('pop');
+    setTimeout(() => btn.classList.remove('pop'), 300);
+
+    // Status
+    const msg = customAudio[r.id] ? '♪ ' + customAudio[r.id].name : r.msg;
+    showStatus(msg, r.color);
+
+    // FX emoji
+    fxEl.textContent      = r.icon;
+    fxEl.style.transition = 'none';
+    fxEl.style.opacity    = '1';
+    fxEl.style.transform  = 'translate(-50%, -50%) scale(0.4)';
+    requestAnimationFrame(() => {
+      fxEl.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      fxEl.style.opacity    = '0';
+      fxEl.style.transform  = 'translate(-50%, -50%) scale(1.6)';
+    });
+
+    // Particles
+    const bRect = btn.getBoundingClientRect();
+    spawnParticles(r.color, bRect.left + bRect.width/2, bRect.top + bRect.height/2);
+    startAnim();
+
+    // History (don't double-add when replaying from history)
+    addHistory(r);
+  }
+
+  /* ───────────────────────────────
+     Keyboard
+  ─────────────────────────────── */
+  const heldKeys = new Set();
+
+  document.addEventListener('keydown', e => {
+    const idx = KEY_MAP[e.code];
+    if (idx === undefined) return;
+    e.preventDefault();
+
+    const nk = document.getElementById('nk-' + KEY_LABELS[idx]);
+    if (nk) nk.classList.add('lit');
+
+    if (heldKeys.has(e.code)) return;
+    heldKeys.add(e.code);
+
+    const r   = reactions[idx];
+    const btn = btnEls[idx];
+
+    if (lockedPads.has(r.id)) { showStatus('🔒 ' + r.label + ' IS LOCKED', '#ff9900'); return; }
+
+    if (loopMode) {
+      startLoop(r, btn);
+    } else {
+      trigger(r, idx);
+    }
+  });
+
+  document.addEventListener('keyup', e => {
+    const idx = KEY_MAP[e.code];
+    if (idx === undefined) return;
+    heldKeys.delete(e.code);
+
+    const nk = document.getElementById('nk-' + KEY_LABELS[idx]);
+    if (nk) nk.classList.remove('lit');
+
+    if (loopMode) stopLoop(reactions[idx], btnEls[idx]);
+  });
+</script>
+</body>
+</html>
