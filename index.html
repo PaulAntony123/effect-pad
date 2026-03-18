@@ -100,6 +100,8 @@
     }
     .mode-btn.loop-toggle.on  { color: #00ff77; }
     .mode-btn.lock-toggle.on  { color: #ff9900; }
+    .mode-btn.io-btn { color: #8b5cf6; border-color: #8b5cf633; }
+    .mode-btn.io-btn:hover { border-color: #8b5cf6; background: #8b5cf615; }
     .mode-icon { font-size: 13px; }
 
     /* Grid */
@@ -374,6 +376,12 @@
     <button class="mode-btn lock-toggle" id="lockToggle" title="Click pads to lock/unlock them">
       <span class="mode-icon">🔒</span> Pad Lock
     </button>
+    <button class="mode-btn io-btn" id="exportProfile" title="Save current pads & sounds to JSON">
+      <span class="mode-icon">💾</span> Export
+    </button>
+    <button class="mode-btn io-btn" id="importProfile" title="Load pads & sounds from JSON">
+      <span class="mode-icon">📂</span> Import
+    </button>
   </div>
 
   <div class="grid" id="grid"></div>
@@ -445,6 +453,8 @@
   const numpadMap   = document.getElementById('numpadMap');
   const loopToggle  = document.getElementById('loopToggle');
   const lockToggle  = document.getElementById('lockToggle');
+  const exportBtn  = document.getElementById('exportProfile');
+  const importBtn  = document.getElementById('importProfile');
   const historyList = document.getElementById('historyList');
   const historyEmpty= document.getElementById('historyEmpty');
   const clearHistBtn= document.getElementById('clearHistory');
@@ -466,6 +476,9 @@
     // Stop all currently looping sounds if turning off
     if (!loopMode) stopAllLoops();
   });
+  
+  exportBtn.addEventListener('click', exportProfile);
+  importBtn.addEventListener('click', importProfile);
 
   lockToggle.addEventListener('click', () => {
     lockMode = !lockMode;
@@ -547,30 +560,165 @@
 
     fileInput.addEventListener('change', e => {
       const file = e.target.files[0]; if (!file) return;
-      if (customAudio[r.id]) URL.revokeObjectURL(customAudio[r.id].url);
-      const url  = URL.createObjectURL(file);
-      const name = file.name.replace(/\.[^.]+$/, '').toUpperCase().slice(0, 10);
-      customAudio[r.id] = { url, name };
-      document.getElementById('name-' + r.id).textContent = '♪ ' + name;
-      rmBtn.style.display = 'block';
-      upBtn.textContent   = '↺ SWAP';
-      fileInput.value     = '';
+      const reader = new FileReader();
+      reader.onload = (re) => {
+        const dataUrl = re.target.result;
+        const name = file.name.replace(/\.[^.]+$/, '').toUpperCase().slice(0, 10);
+        customAudio[r.id] = { url: dataUrl, name };
+        document.getElementById('name-' + r.id).textContent = '♪ ' + name;
+        rmBtn.style.display = 'block';
+        upBtn.textContent   = '↺ SWAP';
+        showStatus('✅ ' + name + ' LOADED', r.color);
+        saveState(); // Save state after custom audio is loaded
+      };
+      reader.readAsDataURL(file);
+      fileInput.value = '';
     });
 
     upBtn.addEventListener('click', () => fileInput.click());
     rmBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (customAudio[r.id]) URL.revokeObjectURL(customAudio[r.id].url);
       delete customAudio[r.id];
       document.getElementById('name-' + r.id).textContent = r.label;
       rmBtn.style.display = 'none';
       upBtn.textContent   = '+ SOUND';
+      showStatus('🗑 PAD RESET', '#ff2255');
+      saveState(); // Save state after custom audio is removed
     });
 
     row.appendChild(upBtn); row.appendChild(fileInput); row.appendChild(rmBtn);
     cell.appendChild(btn); cell.appendChild(row);
     grid.appendChild(cell);
   });
+
+  /* ───────────────────────────────
+     Import / Export / Persistence
+  ─────────────────────────────── */
+  function saveState() {
+    try {
+      const profile = {
+        version: 1.1,
+        timestamp: new Date().toISOString(),
+        customAudio: customAudio,
+        lockedPads: Array.from(lockedPads),
+        history: history // include history in autosave too
+      };
+      localStorage.setItem('reactpad_autosave', JSON.stringify(profile));
+    } catch (e) {
+      console.warn('Auto-save failed:', e);
+    }
+  }
+
+  function loadState() {
+    const saved = localStorage.getItem('reactpad_autosave');
+    if (!saved) return;
+    try {
+      const profile = JSON.parse(saved);
+      if (!profile.customAudio) return;
+
+      // Restore data
+      Object.assign(customAudio, profile.customAudio);
+      if (profile.lockedPads) {
+        lockedPads.clear();
+        profile.lockedPads.forEach(id => lockedPads.add(id));
+      }
+      if (profile.history) {
+        history.length = 0;
+        profile.history.forEach(h => {
+          h.time = new Date(h.time);
+          history.push(h);
+        });
+      }
+
+      updateUI();
+      renderHistory();
+      showStatus('✨ SETUP RESTORED', '#8b5cf6');
+    } catch (e) {
+      console.warn('Auto-load failed:', e);
+    }
+  }
+
+  function updateUI() {
+    reactions.forEach((r, i) => {
+      const btn = btnEls[i];
+      const nameEl = document.getElementById('name-' + r.id);
+      const rmBtn = document.getElementById('rm-' + r.id);
+      const upBtn = rmBtn.previousElementSibling.previousElementSibling;
+
+      if (customAudio[r.id]) {
+        nameEl.textContent = '♪ ' + customAudio[r.id].name;
+        rmBtn.style.display = 'block';
+        upBtn.textContent = '↺ SWAP';
+      } else {
+        nameEl.textContent = r.label;
+        rmBtn.style.display = 'none';
+        upBtn.textContent = '+ SOUND';
+      }
+
+      if (lockedPads.has(r.id)) btn.classList.add('locked');
+      else btn.classList.remove('locked');
+    });
+  }
+
+  function exportProfile() {
+    const profile = {
+      version: 1.1,
+      timestamp: new Date().toISOString(),
+      customAudio: customAudio,
+      lockedPads: Array.from(lockedPads),
+      history: history
+    };
+    
+    const blob = new Blob([JSON.stringify(profile)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `reactpad_profile_${new Date().getTime()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+    showStatus('💾 PROFILE EXPORTED', '#8b5cf6');
+  }
+
+  function importProfile() {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json';
+    input.onchange = (e) => {
+      const file = e.target.files[0]; if (!file) return;
+      const reader = new FileReader();
+      reader.onload = (re) => {
+        try {
+          const profile = JSON.parse(re.target.result);
+          if (!profile.customAudio) throw new Error('Invalid Profile');
+          
+          // Clear current state
+          stopAllLoops();
+          lockedPads.clear();
+          Object.keys(customAudio).forEach(k => delete customAudio[k]);
+          history.length = 0;
+
+          // Restore data from profile
+          Object.assign(customAudio, profile.customAudio);
+          if (profile.lockedPads) profile.lockedPads.forEach(id => lockedPads.add(id));
+          if (profile.history) {
+            profile.history.forEach(h => {
+              h.time = new Date(h.time);
+              history.push(h);
+            });
+          }
+
+          updateUI();
+          renderHistory();
+          saveState(); // Persist the imported profile
+          showStatus('📂 PROFILE LOADED', '#00ff77');
+        } catch (err) {
+          showStatus('❌ INVALID PROFILE', '#ff2255');
+          console.error('Error importing profile:', err);
+        }
+      };
+      reader.readAsText(file);
+    };
+    input.click();
+  }
 
   /* ───────────────────────────────
      Pad Lock
@@ -586,6 +734,7 @@
       stopLoop(r, btn);
       showStatus('🔒 ' + r.label + ' LOCKED', '#ff9900');
     }
+    saveState();
   }
 
   /* ───────────────────────────────
@@ -705,6 +854,7 @@
     history.unshift(entry);
     if (history.length > MAX_HISTORY) history.pop();
     renderHistory();
+    saveState();
   }
 
   function renderHistory() {
@@ -751,6 +901,7 @@
   clearHistBtn.addEventListener('click', () => {
     history.length = 0;
     renderHistory();
+    saveState();
   });
 
   /* ───────────────────────────────
@@ -777,23 +928,20 @@
       showStatus('🔒 ' + r.label + ' IS LOCKED', '#ff9900');
       return;
     }
-    if (loopMode && !fromHistory) return; // loop mode uses mousedown/up instead
+    if (loopMode && !fromHistory) return;
 
     const played = playCustomOnce(r);
     if (!played) playSynth(r);
 
-    // Button pop
     const btn = btnEls[idx];
     btn.classList.remove('pop');
     void btn.offsetWidth;
     btn.classList.add('pop');
     setTimeout(() => btn.classList.remove('pop'), 300);
 
-    // Status
     const msg = customAudio[r.id] ? '♪ ' + customAudio[r.id].name : r.msg;
     showStatus(msg, r.color);
 
-    // FX emoji
     fxEl.textContent      = r.icon;
     fxEl.style.transition = 'none';
     fxEl.style.opacity    = '1';
@@ -804,53 +952,48 @@
       fxEl.style.transform  = 'translate(-50%, -50%) scale(1.6)';
     });
 
-    // Particles
     const bRect = btn.getBoundingClientRect();
     spawnParticles(r.color, bRect.left + bRect.width/2, bRect.top + bRect.height/2);
     startAnim();
 
-    // History (don't double-add when replaying from history)
-    addHistory(r);
+    if (!fromHistory) addHistory(r);
   }
 
   /* ───────────────────────────────
      Keyboard
   ─────────────────────────────── */
   const heldKeys = new Set();
-
-  document.addEventListener('keydown', e => {
+  window.addEventListener('keydown', e => {
+    if (e.repeat) return;
     const idx = KEY_MAP[e.code];
     if (idx === undefined) return;
-    e.preventDefault();
-
+    
+    heldKeys.add(e.code);
     const nk = document.getElementById('nk-' + KEY_LABELS[idx]);
     if (nk) nk.classList.add('lit');
 
-    if (heldKeys.has(e.code)) return;
-    heldKeys.add(e.code);
-
-    const r   = reactions[idx];
-    const btn = btnEls[idx];
-
-    if (lockedPads.has(r.id)) { showStatus('🔒 ' + r.label + ' IS LOCKED', '#ff9900'); return; }
-
-    if (loopMode) {
-      startLoop(r, btn);
-    } else {
-      trigger(r, idx);
-    }
+    const r = reactions[idx];
+    if (loopMode) startLoop(r, btnEls[idx]);
+    else trigger(r, idx);
   });
 
-  document.addEventListener('keyup', e => {
+  window.addEventListener('keyup', e => {
     const idx = KEY_MAP[e.code];
     if (idx === undefined) return;
     heldKeys.delete(e.code);
-
+    
     const nk = document.getElementById('nk-' + KEY_LABELS[idx]);
     if (nk) nk.classList.remove('lit');
 
     if (loopMode) stopLoop(reactions[idx], btnEls[idx]);
   });
+
+  /* ───────────────────────────────
+     Init
+  ─────────────────────────────── */
+  window.addEventListener('load', loadState);
+
 </script>
 </body>
 </html>
+```
